@@ -177,7 +177,7 @@ class AmandaModel(nn.Module):
         # V [T x H]
         context_vectors, context_hidden = self.pass_encoder_lstm(context)
 
-        # M = FV
+        # M = FV => [T x H]
         multi_factors = self.multi_factor(context_vectors)
 
         # M = [M|V] => [T x 2H]
@@ -195,18 +195,22 @@ class AmandaModel(nn.Module):
         max_index = torch.argmax(attention_layer, 1)
         maxcol_attention = torch.gather(attention_layer, 1, max_index.view(self.batch_size, 1, -1))
         maxcol_attention = maxcol_attention.view(self.batch_size, 1, -1)
+        # maxcol softmax
+        maxcol_attention = torch.softmax(maxcol_attention, -1)
         qma = torch.matmul(maxcol_attention, ques_lstm_out).view(self.batch_size, -1)
 
         qf = ques_lstm_out[:, :2, :].contiguous().view(self.batch_size, 2 * self.hidden_dim)
         q = torch.cat([qma, qf], 1)
-
+        # [1 X 3H]
         question_rep = self.question_rep_forward(q).view(self.batch_size, 1, self.hidden_dim)
 
+        # [1 x H] * [H x T]
         sb = torch.matmul(question_rep, begin_pointer_out.transpose(2, 1))
         se = torch.matmul(question_rep, end_pointer_out.transpose(2, 1))
         
         Prb = torch.softmax(sb, -1)
         Pre = torch.softmax(se, -1)
-        Pra = Prb * Pre
-        loss = - torch.sum(torch.log(Pra))
-        return loss
+        Pra = torch.cat(
+            [sb, se], 1
+        )
+        return Pra
